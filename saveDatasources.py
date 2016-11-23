@@ -19,7 +19,8 @@ def get_all_datasources_and_save():
     datasources = json.loads(content_of_datasources)
     print "There are {0} datasources:".format(len(datasources))
     for datasource in datasources:
-        #print datasource['name']
+        print datasource
+        print datasource['name']
         save_datasource(datasource['name'], datasource)
         
 

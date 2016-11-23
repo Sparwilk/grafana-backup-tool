@@ -1,0 +1,111 @@
+import json, requests, optparse, os, sys, time
+
+def get_all_dashboards(grafana_url, headers):
+    r = requests.get(grafana_url+"/api/search/", headers=headers)
+    return json.loads(r.content)
+
+def create_index_if_missing(elasticsearch_url,index_name):
+    index_url = elasticsearch_url + "/" + index_name
+    r = requests.head(index_url)
+    if r.status_code == 404:
+        r = requests.put(index_url)
+        r = requests.head(index_url)
+    if r.status_code == 200:
+        return  index_url
+    else:
+        return ""
+
+def save_dashboard_to_elasticsearch(dashboard_url, json_data):
+    r = requests.put(dashboard_url, data=json_data)
+    #print r.json()
+    return r.status_code
+
+parser = optparse.OptionParser()
+
+parser.add_option('-g', '--grafana-host',
+    dest    = 'grafana_host',
+    help    = 'The grafana host FQDN',
+    metavar = 'GRAFANA_HOST')
+
+parser.add_option('-P', '--grafana-port',
+    default = '80',
+    dest    = 'grafana_port',
+    help    = 'The grafana port',
+    metavar = 'GRAFANA_PORT')
+
+parser.add_option('-a', '--grafana-api-key',
+    dest    = 'grafana_api_key',
+    help    = 'The grafana API key',
+    metavar = 'GRAFANA_API_KEY')
+
+parser.add_option('-e', '--elasticsearch-host',
+    dest    = 'elastic_host',
+    help    = 'The elasticsearch host FQDN',
+    metavar = 'ELASTICSEARCH_HOST')
+
+parser.add_option('-p', '--elasticsearch-port',
+    default = '9200',
+    dest    = 'elastic_port',
+    help    = 'The elasticsearch port',
+    metavar = 'ELASTICSEARCH_PORT')
+
+parser.add_option('-i', '--index-name',
+    default = 'grafana-dash',
+    dest    = 'index_name',
+    help    = 'the elasticsearch index to save the dashboards',
+    metavar = 'ELASTICSEARCH_INDEX')
+
+parser.add_option('-d', '--backup_directory',
+    default = '.',
+    dest    = 'backup_dir',
+    help    = 'The directory containing the .dashboard backup files',
+    metavar = 'BACKUP_DIRECTORY')
+
+(options, args) = parser.parse_args()
+
+if not options.elastic_host:
+  parser.error('An elasticsearch host is required')
+
+elastic_host = options.elastic_host
+elastic_port = options.elastic_port
+grafana_host = options.grafana_host
+grafana_port = options.grafana_port
+grafana_api_key = options.grafana_api_key
+index_name = options.index_name
+backup_dir = options.backup_dir
+
+http_get_headers = {'Authorization': 'Bearer ' + grafana_api_key}
+http_post_headers = {'Authorization': 'Bearer ' + grafana_api_key, 'Content-Type': 'application/json'}
+
+elasticsearch_url = "http://" + elastic_host + ":" + elastic_port 
+grafana_url = "http://" + grafana_host + ":" + grafana_port
+index_url = create_index_if_missing(elasticsearch_url, index_name)
+
+print get_all_dashboards(grafana_url, http_get_headers)
+
+sys.exit(1)
+if index_url:
+    for filename in os.listdir(backup_dir):
+        if filename.endswith(".dashboard"):
+            with open (os.path.join(backup_dir,filename), 'r') as f:
+                data = f.read()
+                grafana_exported_dashboard = json.loads(data)
+                grafana_exported_dashboard['dashboard']['id'] = None
+                elasticsearch_format_dashboard = {
+                        "group": "guest",
+                        "tags": [],
+                        "user": "guest",
+                        "title": grafana_exported_dashboard['dashboard']['title'],
+                        "dashboard" : grafana_exported_dashboard['dashboard']
+                        }
+
+                elasticsearch_slug = grafana_exported_dashboard['meta']['slug']
+                full_dashboard_url = index_url + "/dashboard/" + elasticsearch_slug
+                print full_dashboard_url
+                #r = requests.put(elasticsearch_url + index_name)
+#                save_dashboard_to_elasticsearch(full_dashboard_url, json.dumps(elasticsearch_format_dashboard))
+                time.sleep(500000000)
+else:
+    print "Unable to create index: " + index_url
+    sys.exit(1)
+
