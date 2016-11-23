@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import json, requests, optparse, os, sys, time
+import json, requests, optparse, os, sys, datetime
 
 def get_all_dashboards(grafana_url, headers):
     r = requests.get(grafana_url+"/api/search/", headers=headers)
@@ -58,10 +58,16 @@ parser.add_option('-p', '--elasticsearch-port',
     metavar = 'ELASTICSEARCH_PORT')
 
 parser.add_option('-i', '--index-name',
-    default = 'grafana-dash-backup',
+    default = 'grafana-dash',
     dest    = 'index_name',
     help    = 'The name of the elasticsearch index to save the dashboards',
     metavar = 'ELASTICSEARCH_INDEX')
+
+parser.add_option('-c', '--cron',
+    default = False,
+    dest    = 'run_as_cron',
+    help    = 'Generate an automatic index name based on the default value + the current date',
+    action  = 'store_true')
 
 (options, args) = parser.parse_args()
 
@@ -75,7 +81,10 @@ elastic_port = options.elastic_port
 grafana_host = options.grafana_host
 grafana_port = options.grafana_port
 grafana_api_key = options.grafana_api_key
-index_name = options.index_name
+if options.run_as_cron:
+    index_name = options.index_name + "-" + datetime.date.today().strftime('%Y.%m.%d')
+else:
+    index_name = options.index_name
 
 http_get_headers = {'Authorization': 'Bearer ' + grafana_api_key}
 http_post_headers = {'Authorization': 'Bearer ' + grafana_api_key, 'Content-Type': 'application/json'}
@@ -108,5 +117,4 @@ for dashboard in all_dashboards:
     elasticsearch_slug = grafana_exported_dashboard['meta']['slug']
     full_dashboard_url = index_url + "/dashboard/" + elasticsearch_slug
     save_dashboard_to_elasticsearch(full_dashboard_url, json.dumps(elasticsearch_format_dashboard))
-
 sys.exit(0)
